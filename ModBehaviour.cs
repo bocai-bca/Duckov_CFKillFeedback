@@ -1,20 +1,19 @@
-﻿using Duckov.Modding;
-using Duckov.UI.MainMenu;
-using FMOD;
+﻿using FMOD;
 using FMODUnity;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using UnityEngine;
-using UnityEngine.Networking;
 using UnityEngine.UI;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace CFKillFeedback
 {
 	public class ModBehaviour : Duckov.Modding.ModBehaviour
 	{
+		public static bool Loaded = false;
+		public static Dictionary<string, object> DefaultConfig = new Dictionary<string, object>();
 		public static float IconStayAlpha = 0.75f;
 		public static float IconDropTime = 0.1f;
 		public static float IconStayTime = 1.0f;
@@ -70,8 +69,14 @@ namespace CFKillFeedback
 		internal static Image? ui_image;
 		internal static RectTransform? ui_transform;
 		internal static CanvasGroup? ui_canvasgroup;
-		// 上次击杀的引擎启动时间，获取方式是Time.time
-		public static float last_kill_time = 0.0f;
+		// 配置文件-音量，0-1决定音量大小
+		public static float volume = 1.0f;
+		// 配置文件-简单音效，为true时无论伤害类型与连杀数如何只播放普通击杀和爆头击杀的音效
+		public static bool simple_sfx = false;
+		// 配置文件-禁用图标，为true时不显示图标
+		public static bool disable_icon = false;
+        // 上次击杀的引擎启动时间，获取方式是Time.time
+        public static float last_kill_time = 0.0f;
 		// 连杀数
 		public static int combo_count = 0;
 		private void Update()
@@ -102,6 +107,10 @@ namespace CFKillFeedback
 					tr_pos = new Vector3(IconPosPrctStay.x * screen_size.x, IconPosPrctStay.y * screen_size.y);
 				}
 				ui_transform.position = tr_pos;
+				if (disable_icon)
+				{
+					ui_canvasgroup.alpha = 0.0f;
+				}
 			}
 		}
 		public void OnDead(Health health, DamageInfo damageInfo)
@@ -224,12 +233,24 @@ namespace CFKillFeedback
 			{
                 icon = KillFeedbackIcons["grenade_kill"];
             }
+			if (simple_sfx)
+			{
+				if (headshot)
+				{
+					audio = KillFeedbackAudios_FMOD["headshot"];
+				}
+				else
+				{
+					audio = KillFeedbackAudios_FMOD["kill"];
+				}
+			}
 			// 应用资源
 			ChannelGroup channel_group;
 			RuntimeManager.GetBus("bus:/Master/SFX").getChannelGroup(out channel_group);
-			Channel channel = new Channel();
+			Channel channel;
 			RuntimeManager.CoreSystem.playSound(audio, channel_group, false, out channel);
-			if (ui_image != null && icon != null)
+            channel.setVolume(volume);
+            if (ui_image != null && icon != null)
 			{
 				ui_image.sprite = Sprite.Create(icon, new Rect(0.0f, 0.0f, 512.0f, 512.0f), new Vector2(256.0f, 256.0f));
 			}
@@ -251,11 +272,20 @@ namespace CFKillFeedback
 		}
 		private void Awake()
 		{
-			Instance = this;
+			DefaultConfig.TryAdd("volume", 1.0f);
+			DefaultConfig.TryAdd("simple_sfx", false);
+			DefaultConfig.TryAdd("disable_icon", false);
+            Instance = this;
+			if (Loaded)
+			{
+				return;
+			}
 			if (LoadRes())
 			{
 				UnityEngine.Debug.Log("CFKillFeedback: 已载入/Loaded");
-			}
+				Loaded = true;
+
+            }
 			else
 			{
 				UnityEngine.Debug.LogError("CFKillFeedback: 载入资源时出现问题/Something wrong when loading resources");
@@ -264,6 +294,42 @@ namespace CFKillFeedback
 		private void OnEnable()
 		{
 			Health.OnDead += OnDead;
+			// 读取或创建配置文件
+			string config_path = Path.Combine(Application.streamingAssetsPath, "CFKillFeedback.cfg");
+            if (File.Exists(config_path))
+			{
+				string config_content = File.ReadAllText(config_path);
+                JObject? config_parsed = JsonConvert.DeserializeObject<JObject>(config_content);
+				if (config_parsed != null)
+				{
+					foreach (JProperty property in config_parsed.Properties())
+					{
+						if (property.Name == "volume" && property.Value.Type == JTokenType.Float)
+						{
+							volume = (float)property.Value;
+							continue;
+						}
+                        if (property.Name == "simple_sfx" && property.Value.Type == JTokenType.Boolean)
+                        {
+                            simple_sfx = (bool)property.Value;
+                            continue;
+                        }
+                        if (property.Name == "disable_icon" && property.Value.Type == JTokenType.Boolean)
+                        {
+                            disable_icon = (bool)property.Value;
+                            continue;
+                        }
+                    }
+                }
+				else
+				{
+					UnityEngine.Debug.LogError("CFKillFeedback: 读取配置文件时出错/Failed to read config file");
+				}
+			}
+			else
+			{
+				File.WriteAllText(config_path, Newtonsoft.Json.JsonConvert.SerializeObject(DefaultConfig, Formatting.Indented));
+			}
 		}
 		private void OnDisable()
 		{
@@ -298,7 +364,7 @@ namespace CFKillFeedback
 				Texture2D icon_texture = new Texture2D(256, 256);
 				if (icon_texture.LoadImage(icon_bytes))
 				{
-					KillFeedbackIcons.Add(icon_name, icon_texture);
+					KillFeedbackIcons.TryAdd(icon_name, icon_texture);
 					success = success && true;
 					UnityEngine.Debug.Log("CFKillFeedback: 纹理加载成功 = " + this_path);
 					continue;
@@ -323,7 +389,7 @@ namespace CFKillFeedback
 				RESULT fmod_create_result = RuntimeManager.CoreSystem.createSound(this_path, MODE.LOOP_OFF, out sound);
 				if (fmod_create_result == RESULT.OK)
 				{
-					KillFeedbackAudios_FMOD.Add(audio_name, sound);
+					KillFeedbackAudios_FMOD.TryAdd(audio_name, sound);
 					success = success && true;
 					UnityEngine.Debug.Log("CFKillFeedback: 成功加载音频 = " + this_path);
 				}
@@ -351,31 +417,5 @@ namespace CFKillFeedback
 			ui_transform.SetParent(hud_manager.transform);
 			UnityEngine.Debug.Log("CFKillFeedback: 已创建UI/UI created");
 		}
-		/*IEnumerator GetAudioClip(string path, string name)
-		{
-			DownloadHandlerAudioClip download_handler = new DownloadHandlerAudioClip(path, AudioType.OGGVORBIS);
-			download_handler.compressed = true;
-			using (UnityWebRequest request = new UnityWebRequest(path, "GET", download_handler, null))
-			{
-				yield return request.SendWebRequest();
-				if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
-				{
-					UnityEngine.Debug.LogError("CFKillFeedback: WebRequest获取失败 = " + request.error);
-				}
-				else
-				{
-					AudioClip loadedClip = DownloadHandlerAudioClip.GetContent(request);
-					if (loadedClip != null)
-					{
-						KillFeedbackAudios[name] = loadedClip;
-						UnityEngine.Debug.Log("CFKillFeedback: 音频加载成功 = " + path);
-					}
-					else
-					{
-						UnityEngine.Debug.LogError("CFKillFeedback: 加载音频时获取WebRequest内容失败 = " + path);
-					}
-				}
-			}
-		}*/
-	}
+    }
 }
