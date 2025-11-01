@@ -149,6 +149,11 @@ namespace CFKillFeedback
 				bool melee = damageInfo.fromCharacter.GetMeleeWeapon() != null;
 				bool explosion = damageInfo.isExplosion;
 				bool goldheadshot = damageInfo.finalDamage >= health.MaxHealth * 0.9f;
+				if (disable_headshot)
+				{
+					headshot = false;
+					goldheadshot = false;
+				}
 				PlayKill(headshot, goldheadshot, melee, explosion);
 			}
 		}
