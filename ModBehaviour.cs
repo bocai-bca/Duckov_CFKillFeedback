@@ -176,11 +176,10 @@ namespace CFKillFeedback
 				{
 					audio = KillFeedbackAudios_FMOD["headshot"];
 					icon = KillFeedbackIcons["headshot"];
-				}
-				if (goldheadshot) //黄金爆头
-				{
-					audio = KillFeedbackAudios_FMOD["headshot"];
-					icon = KillFeedbackIcons["headshot_gold"];
+					if (goldheadshot) //黄金爆头
+					{
+						icon = KillFeedbackIcons["headshot_gold"];
+					}
 				}
 				if (melee) //近战
 				{
@@ -239,10 +238,10 @@ namespace CFKillFeedback
 				if (headshot) //爆头
 				{
 					icon = KillFeedbackIcons["headshot"];
-				}
-				if (goldheadshot) //黄金爆头
-				{
-					icon = KillFeedbackIcons["headshot_gold"];
+					if (goldheadshot) //黄金爆头
+					{
+						icon = KillFeedbackIcons["headshot_gold"];
+					}
 				}
 			}
 			if (melee) //近战
