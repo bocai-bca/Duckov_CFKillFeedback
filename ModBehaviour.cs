@@ -142,8 +142,8 @@ namespace CFKillFeedback
 				}
 				return;
 			}
-			// 如果伤害来自玩家队
-			if (damageInfo.fromCharacter.Team == Teams.player)
+			// 如果伤害来自玩家
+			if (damageInfo.fromCharacter.IsMainCharacter())
 			{
 				bool headshot = damageInfo.crit > 0;
 				bool melee = damageInfo.fromCharacter.GetMeleeWeapon() != null;
